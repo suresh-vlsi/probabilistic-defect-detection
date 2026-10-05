@@ -1,0 +1,710 @@
+"""
+Probabilistic Defect Detection
+Experiment Runner
+
+Phase 2:
+Experimental evaluation of probabilistic ATPG on ISCAS benchmarks.
+
+Current benchmark:
+    C17
+
+Pipeline:
+    BENCH -> Parse Circuit
+          -> Generate All Input Vectors
+          -> Generate Stuck-at Faults
+          -> Build Fault Dictionary
+          -> Exhaustive ATPG Baseline
+          -> Probabilistic Ranking
+          -> Test Compaction
+          -> Coverage Evaluation
+          -> Test Reduction
+          -> Save Results
+"""
+
+from pathlib import Path
+import argparse
+import json
+import sys
+import time
+
+
+# ============================================================
+# PROJECT ROOT
+# ============================================================
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+# ============================================================
+# PROJECT IMPORTS
+# ============================================================
+
+from src.parser import parse_bench
+
+from src.atpg import (
+    generate_all_input_vectors,
+    generate_tests_for_all_faults,
+)
+
+from src.faults import (
+    generate_stuck_at_faults,
+)
+
+from src.fault_sim import (
+    find_detecting_tests,
+)
+
+from src.probabilistic_atpg import (
+    build_test_fault_map,
+    rank_tests,
+    compact_test_set,
+    calculate_fault_coverage,
+    calculate_test_reduction,
+)
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+DEFAULT_BENCHMARK = "c17.bench"
+
+BENCHMARK_DIR = (
+    PROJECT_ROOT
+    / "benchmarks"
+    / "iscas85"
+)
+
+RESULTS_DIR = (
+    PROJECT_ROOT
+    / "experiments"
+    / "results"
+)
+
+
+# ============================================================
+# LOAD BENCHMARK
+# ============================================================
+
+def load_benchmark(benchmark_name):
+    """
+    Load an ISCAS85 benchmark.
+
+    Parameters
+    ----------
+    benchmark_name : str
+        Benchmark filename, e.g. c17.bench
+
+    Returns
+    -------
+    Path
+        Benchmark path
+    """
+
+    benchmark_path = BENCHMARK_DIR / benchmark_name
+
+    if not benchmark_path.exists():
+        raise FileNotFoundError(
+            f"Benchmark not found:\n{benchmark_path}"
+        )
+
+    return benchmark_path
+
+
+# ============================================================
+# BUILD FAULT DICTIONARY
+# ============================================================
+
+def build_fault_dictionary(
+    circuit,
+    test_vectors,
+    faults,
+):
+    """
+    Build:
+
+        fault -> detecting test vectors
+
+    Example:
+
+        {
+            "1/SA0": ["00000", "00001"],
+            "1/SA1": ["00000", "00010"],
+        }
+    """
+
+    fault_dictionary = {}
+
+    for fault in faults:
+
+        detecting_tests = find_detecting_tests(
+            circuit,
+            test_vectors,
+            fault,
+        )
+
+        fault_dictionary[fault.name] = detecting_tests
+
+    return fault_dictionary
+
+
+# ============================================================
+# RUN EXPERIMENT
+# ============================================================
+
+def run_experiment(benchmark_name):
+    """
+    Execute the complete probabilistic ATPG experiment.
+    """
+
+    start_time = time.perf_counter()
+
+    print()
+    print("=" * 70)
+    print(" PROBABILISTIC DEFECT DETECTION")
+    print(" EXPERIMENTAL EVALUATION")
+    print("=" * 70)
+
+    print(f"\nBenchmark : {benchmark_name}")
+
+    # --------------------------------------------------------
+    # LOAD BENCHMARK
+    # --------------------------------------------------------
+
+    benchmark_path = load_benchmark(
+        benchmark_name
+    )
+
+    print(
+        f"Path      : {benchmark_path}"
+    )
+
+    circuit = parse_bench(
+        benchmark_path
+    )
+
+    print("\nCircuit loaded successfully.")
+
+    print(
+        f"Primary inputs  : {len(circuit.inputs)}"
+    )
+
+    print(
+        f"Primary outputs : {len(circuit.outputs)}"
+    )
+
+    print(
+        f"Circuit nodes   : {len(circuit.nodes)}"
+    )
+
+    print(
+        f"Gates           : {len(circuit.gates)}"
+    )
+
+    # --------------------------------------------------------
+    # GENERATE ALL INPUT VECTORS
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 70)
+    print("1. EXHAUSTIVE TEST VECTOR GENERATION")
+    print("-" * 70)
+
+    test_vectors = generate_all_input_vectors(
+        circuit
+    )
+
+    print(
+        f"Possible input vectors : "
+        f"{len(test_vectors)}"
+    )
+
+    # --------------------------------------------------------
+    # GENERATE STUCK-AT FAULTS
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 70)
+    print("2. STUCK-AT FAULT GENERATION")
+    print("-" * 70)
+
+    faults = generate_stuck_at_faults(
+        circuit
+    )
+
+    print(
+        f"Circuit nodes : {len(circuit.nodes)}"
+    )
+
+    print(
+        f"SSA faults    : {len(faults)}"
+    )
+
+    # --------------------------------------------------------
+    # BUILD FAULT DICTIONARY
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 70)
+    print("3. FAULT DICTIONARY CONSTRUCTION")
+    print("-" * 70)
+
+    dictionary_start = time.perf_counter()
+
+    fault_dictionary = build_fault_dictionary(
+        circuit,
+        test_vectors,
+        faults,
+    )
+
+    dictionary_time = (
+        time.perf_counter()
+        - dictionary_start
+    )
+
+    detected_faults = [
+        fault_name
+        for fault_name, tests
+        in fault_dictionary.items()
+        if tests
+    ]
+
+    undetected_faults = [
+        fault_name
+        for fault_name, tests
+        in fault_dictionary.items()
+        if not tests
+    ]
+
+    total_faults = len(faults)
+
+    detected_count = len(
+        detected_faults
+    )
+
+    baseline_coverage = (
+        100.0 * detected_count / total_faults
+        if total_faults
+        else 0.0
+    )
+
+    print(
+        f"Total faults       : {total_faults}"
+    )
+
+    print(
+        f"Detected faults    : {detected_count}"
+    )
+
+    print(
+        f"Undetected faults  : "
+        f"{len(undetected_faults)}"
+    )
+
+    print(
+        f"Fault coverage     : "
+        f"{baseline_coverage:.2f}%"
+    )
+
+    print(
+        f"Dictionary time    : "
+        f"{dictionary_time:.6f} s"
+    )
+
+    # --------------------------------------------------------
+    # ATPG BASELINE
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 70)
+    print("4. EXHAUSTIVE ATPG BASELINE")
+    print("-" * 70)
+
+    atpg_start = time.perf_counter()
+
+    atpg_tests = generate_tests_for_all_faults(
+        circuit,
+        faults,
+        test_vectors,
+    )
+
+    atpg_time = (
+        time.perf_counter()
+        - atpg_start
+    )
+
+    atpg_successful = [
+        fault_name
+        for fault_name, test
+        in atpg_tests.items()
+        if test is not None
+    ]
+
+    atpg_success_count = len(
+        atpg_successful
+    )
+
+    print(
+        f"Faults              : "
+        f"{len(faults)}"
+    )
+
+    print(
+        f"Tests generated     : "
+        f"{atpg_success_count}"
+    )
+
+    print(
+        f"ATPG success rate   : "
+        f"{100.0 * atpg_success_count / total_faults:.2f}%"
+        if total_faults
+        else "ATPG success rate   : 0.00%"
+    )
+
+    print(
+        f"ATPG runtime        : "
+        f"{atpg_time:.6f} s"
+    )
+
+    # --------------------------------------------------------
+    # TEST -> FAULT MAP
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 70)
+    print("5. TEST -> FAULT MAPPING")
+    print("-" * 70)
+
+    test_fault_map = build_test_fault_map(
+        fault_dictionary
+    )
+
+    print(
+        f"Unique test vectors : "
+        f"{len(test_fault_map)}"
+    )
+
+    # --------------------------------------------------------
+    # PROBABILISTIC RANKING
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 70)
+    print("6. PROBABILISTIC TEST RANKING")
+    print("-" * 70)
+
+    ranking_start = time.perf_counter()
+
+    # rank_tests() expects only binary-string test vectors.
+    test_vector_strings = [
+    vector
+    for vector, _ in test_vectors
+    ]
+
+    ranked_tests = rank_tests(
+       test_vector_strings,
+       fault_dictionary,
+    )
+
+    ranking_time = (
+        time.perf_counter()
+        - ranking_start
+    )
+
+    print(
+        f"Ranked tests : "
+        f"{len(ranked_tests)}"
+    )
+
+    print(
+        f"Ranking time : "
+        f"{ranking_time:.6f} s"
+    )
+
+    print("\nTop-ranked tests:")
+
+    for entry in ranked_tests[:10]:
+
+        print(
+            f"  rank={entry.get('rank', '-'):<3} "
+            f"test={entry.get('test', '-'):<10} "
+            f"score={entry.get('score', 0.0):.6f} "
+            f"faults={len(entry.get('faults', []))}"
+        )
+
+    # --------------------------------------------------------
+    # TEST COMPACTION
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 70)
+    print("7. GREEDY TEST-SET COMPACTION")
+    print("-" * 70)
+
+    compaction_start = time.perf_counter()
+
+    compacted_tests = compact_test_set(
+        ranked_tests
+    )
+
+    compaction_time = (
+        time.perf_counter()
+        - compaction_start
+    )
+
+    original_count = len(
+        test_vectors
+    )
+
+    compacted_count = len(
+        compacted_tests
+    )
+
+    print(
+        f"Original tests  : "
+        f"{original_count}"
+    )
+
+    print(
+        f"Compacted tests : "
+        f"{compacted_count}"
+    )
+
+    print(
+        f"Compaction time  : "
+        f"{compaction_time:.6f} s"
+    )
+
+    # --------------------------------------------------------
+    # COMPACTED COVERAGE
+    # --------------------------------------------------------
+
+    print("\n" + "-" * 70)
+    print("8. COMPACTED TEST COVERAGE")
+    print("-" * 70)
+
+    compacted_coverage = calculate_fault_coverage(
+        compacted_tests,
+        fault_dictionary,
+    )
+
+    print(
+        f"Covered faults : "
+        f"{compacted_coverage['covered_faults']}"
+    )
+
+    print(
+        f"Total faults   : "
+        f"{compacted_coverage['total_faults']}"
+    )
+
+    print(
+        f"Coverage       : "
+        f"{compacted_coverage['coverage']:.2f}%"
+    )
+
+    # --------------------------------------------------------
+    # TEST REDUCTION
+    # --------------------------------------------------------
+
+    reduction = calculate_test_reduction(
+        original_count,
+        compacted_count,
+    )
+
+    print("\n" + "-" * 70)
+    print("9. TEST-SET REDUCTION")
+    print("-" * 70)
+
+    print(
+        f"Original tests : "
+        f"{original_count}"
+    )
+
+    print(
+        f"Reduced tests  : "
+        f"{compacted_count}"
+    )
+
+    print(
+        f"Reduction      : "
+        f"{reduction:.2f}%"
+    )
+
+    # --------------------------------------------------------
+    # FINAL RESULTS
+    # --------------------------------------------------------
+
+    total_time = (
+        time.perf_counter()
+        - start_time
+    )
+
+    print("\n" + "=" * 70)
+    print(" EXPERIMENT RESULT")
+    print("=" * 70)
+
+    print(
+        f"\nBenchmark             : "
+        f"{benchmark_name}"
+    )
+
+    print(
+        f"Total faults          : "
+        f"{total_faults}"
+    )
+
+    print(
+        f"Baseline coverage     : "
+        f"{baseline_coverage:.2f}%"
+    )
+
+    print(
+        f"Original test vectors : "
+        f"{original_count}"
+    )
+
+    print(
+        f"Compacted test set    : "
+        f"{compacted_count}"
+    )
+
+    print(
+        f"Final coverage        : "
+        f"{compacted_coverage['coverage']:.2f}%"
+    )
+
+    print(
+        f"Test reduction        : "
+        f"{reduction:.2f}%"
+    )
+
+    print(
+        f"Total runtime         : "
+        f"{total_time:.6f} s"
+    )
+
+    print(
+        f"\nUndetected faults    : "
+        f"{len(undetected_faults)}"
+    )
+
+    if undetected_faults:
+
+        for fault in undetected_faults:
+            print(
+                f"  - {fault}"
+            )
+
+    # --------------------------------------------------------
+    # SAVE RESULTS
+    # --------------------------------------------------------
+
+    RESULTS_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    result = {
+        "benchmark": benchmark_name,
+        "circuit": {
+            "primary_inputs": len(circuit.inputs),
+            "primary_outputs": len(circuit.outputs),
+            "nodes": len(circuit.nodes),
+            "gates": len(circuit.gates),
+        },
+        "faults": {
+            "total": total_faults,
+            "detected": detected_count,
+            "undetected": len(undetected_faults),
+            "baseline_coverage_percent": baseline_coverage,
+        },
+        "atpg": {
+            "successful_faults": atpg_success_count,
+            "success_rate_percent": (
+                100.0 * atpg_success_count / total_faults
+                if total_faults
+                else 0.0
+            ),
+            "runtime_seconds": atpg_time,
+        },
+        "probabilistic": {
+            "ranked_tests": len(ranked_tests),
+            "compacted_tests": compacted_count,
+            "coverage_percent": compacted_coverage[
+                "coverage"
+            ],
+            "covered_faults": compacted_coverage[
+                "covered_faults"
+            ],
+            "test_reduction_percent": reduction,
+            "ranking_runtime_seconds": ranking_time,
+            "compaction_runtime_seconds": compaction_time,
+        },
+        "runtime": {
+            "fault_dictionary_seconds": dictionary_time,
+            "total_seconds": total_time,
+        },
+        "undetected_faults": undetected_faults,
+    }
+
+    result_file = (
+        RESULTS_DIR
+        / f"{Path(benchmark_name).stem}_result.json"
+    )
+
+    with open(
+        result_file,
+        "w",
+        encoding="utf-8",
+    ) as file:
+
+        json.dump(
+            result,
+            file,
+            indent=4,
+        )
+
+    print(
+        f"\nResults saved to:"
+        f"\n{result_file}"
+    )
+
+    print("\n" + "=" * 70)
+    print(" EXPERIMENT COMPLETE")
+    print("=" * 70)
+    print()
+
+
+# ============================================================
+# COMMAND-LINE INTERFACE
+# ============================================================
+
+def main():
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run probabilistic ATPG "
+            "experiments on ISCAS benchmarks."
+        )
+    )
+
+    parser.add_argument(
+        "--benchmark",
+        "-b",
+        default=DEFAULT_BENCHMARK,
+        help=(
+            "Benchmark filename "
+            "(default: c17.bench)"
+        ),
+    )
+
+    args = parser.parse_args()
+
+    run_experiment(
+        args.benchmark
+    )
+
+
+# ============================================================
+# ENTRY POINT
+# ============================================================
+
+if __name__ == "__main__":
+    main()
