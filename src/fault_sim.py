@@ -156,3 +156,114 @@ def find_detecting_tests(circuit, test_vectors, fault):
             detecting_tests.append(vector)
 
     return detecting_tests
+
+def build_fault_dictionary(circuit, test_vectors, faults):
+    """
+    Build the fault dictionary.
+
+    Maps:
+
+        fault -> list of detecting test vectors
+
+    Progress is printed periodically because this operation
+    can be expensive for large ISCAS benchmarks.
+    """
+
+    from .simulator import simulate
+    import time
+
+    fault_dictionary = {}
+
+    # --------------------------------------------------------
+    # Initialize dictionary
+    # --------------------------------------------------------
+
+    for fault in faults:
+
+        fault_name = (
+            str(fault.name)
+            if hasattr(fault, "name")
+            else str(fault)
+        )
+
+        fault_dictionary[fault_name] = []
+
+    total_vectors = len(test_vectors)
+    total_faults = len(faults)
+
+    start_time = time.perf_counter()
+
+    # --------------------------------------------------------
+    # Process test vectors
+    # --------------------------------------------------------
+
+    for vector_index, (vector, input_values) in enumerate(
+        test_vectors,
+        start=1
+    ):
+
+        # Good circuit is simulated only once per vector.
+        good_values = simulate(
+            circuit,
+            input_values
+        )
+
+        # ----------------------------------------------------
+        # Check every fault
+        # ----------------------------------------------------
+
+        for fault in faults:
+
+            faulty_values = simulate_with_fault(
+                circuit,
+                input_values,
+                fault
+            )
+
+            detected = any(
+                good_values[output] != faulty_values[output]
+                for output in circuit.outputs
+            )
+
+            if detected:
+
+                fault_name = (
+                    str(fault.name)
+                    if hasattr(fault, "name")
+                    else str(fault)
+                )
+
+                fault_dictionary[fault_name].append(
+                    str(vector)
+                )
+
+        # ----------------------------------------------------
+        # Progress reporting
+        # ----------------------------------------------------
+
+        if (
+            vector_index == 1
+            or vector_index % 25 == 0
+            or vector_index == total_vectors
+        ):
+
+            elapsed = time.perf_counter() - start_time
+
+            percent = (
+                100.0 * vector_index / total_vectors
+                if total_vectors
+                else 100.0
+            )
+
+            print(
+                f"\r    Progress: "
+                f"{vector_index}/{total_vectors} "
+                f"({percent:6.2f}%) "
+                f"| elapsed: {elapsed:8.2f}s",
+                end="",
+                flush=True
+            )
+
+    print()
+
+    return fault_dictionary

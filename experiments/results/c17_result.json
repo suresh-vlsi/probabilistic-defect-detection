@@ -15,7 +15,7 @@
     "atpg": {
         "successful_faults": 22,
         "success_rate_percent": 100.0,
-        "runtime_seconds": 0.0007161959993027267
+        "runtime_seconds": 0.0009662840002420126
     },
     "probabilistic": {
         "ranked_tests": 32,
@@ -23,12 +23,12 @@
         "coverage_percent": 100.0,
         "covered_faults": 22,
         "test_reduction_percent": 87.5,
-        "ranking_runtime_seconds": 0.00024767299964878475,
-        "compaction_runtime_seconds": 0.00020595299974957015
+        "ranking_runtime_seconds": 0.00025452499994571554,
+        "compaction_runtime_seconds": 0.00024110999993354199
     },
     "runtime": {
-        "fault_dictionary_seconds": 0.0044568729999809875,
-        "total_seconds": 0.008600189000389946
+        "fault_dictionary_seconds": 0.0034101659998668765,
+        "total_seconds": 0.015884402000210684
     },
     "undetected_faults": []
 }

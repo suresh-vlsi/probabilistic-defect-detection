@@ -54,9 +54,7 @@ from src.faults import (
 )
 
 from src.fault_sim import (
-    detect_fault,
     find_detecting_tests,
-    build_fault_dictionary,
 )
 
 from src.probabilistic_atpg import (
@@ -115,8 +113,7 @@ def load_benchmark(benchmark_name):
 
     return benchmark_path
 
-
-    # --------------------------------------------------------
+    # --------------------------------------------------------
     # BUILD FAULT DICTIONARY
     # --------------------------------------------------------
 
@@ -334,7 +331,7 @@ def run_experiment(benchmark_name):
     # ============================================================
 
     MAX_EXHAUSTIVE_INPUTS = 16
-    SAMPLED_VECTOR_COUNT = 1000
+    SAMPLED_VECTOR_COUNT = 10000
 
     print("\n" + "=" * 70)
 

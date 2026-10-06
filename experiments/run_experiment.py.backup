@@ -54,9 +54,7 @@ from src.faults import (
 )
 
 from src.fault_sim import (
-    detect_fault,
     find_detecting_tests,
-    build_fault_dictionary,
 )
 
 from src.probabilistic_atpg import (
@@ -116,164 +114,41 @@ def load_benchmark(benchmark_name):
     return benchmark_path
 
 
-    # --------------------------------------------------------
-    # BUILD FAULT DICTIONARY
-    # --------------------------------------------------------
+# ============================================================
+# BUILD FAULT DICTIONARY
+# ============================================================
 
-    print("\n" + "-" * 70)
-    print("3. FAULT DICTIONARY CONSTRUCTION")
-    print("-" * 70)
+def build_fault_dictionary(
+    circuit,
+    test_vectors,
+    faults,
+):
+    """
+    Build:
 
-    print()
-    print("Building fault dictionary...")
-    print("This may take time for large ISCAS-85 circuits.")
-    print()
+        fault -> detecting test vectors
 
-    dictionary_start = time.perf_counter()
+    Example:
 
-    # --------------------------------------------------------
-    # Build dictionary with progress reporting.
-    #
-    # For every fault, search through the generated test
-    # vectors and record all vectors that detect the fault.
-    # --------------------------------------------------------
+        {
+            "1/SA0": ["00000", "00001"],
+            "1/SA1": ["00000", "00010"],
+        }
+    """
 
     fault_dictionary = {}
 
-    total_faults_to_process = len(faults)
+    for fault in faults:
 
-    for fault_index, fault in enumerate(
-        faults,
-        start=1
-    ):
-
-        fault_name = str(fault)
-
-        detecting_vectors = []
-
-        for vector_index, vector_data in enumerate(
+        detecting_tests = find_detecting_tests(
+            circuit,
             test_vectors,
-            start=1
-        ):
-
-            # test_vectors contain:
-            #
-            #     (vector_string, input_values)
-            #
-            vector, input_values = vector_data
-
-            try:
-
-                detected = detect_fault(
-                    circuit,
-                    input_values,
-                    fault
-                )
-
-            except TypeError:
-
-                # Compatibility with implementations where
-                # detect_fault expects the vector directly.
-
-                detected = detect_fault(
-                    circuit,
-                    input_values,
-                    fault
-                )
-
-            if detected:
-                detecting_vectors.append(vector)
-
-        fault_dictionary[fault_name] = detecting_vectors
-
-        # ----------------------------------------------------
-        # Progress display
-        # ----------------------------------------------------
-
-        elapsed = (
-            time.perf_counter()
-            - dictionary_start
+            fault,
         )
 
-        percent = (
-            100.0 * fault_index / total_faults_to_process
-            if total_faults_to_process
-            else 100.0
-        )
+        fault_dictionary[fault.name] = detecting_tests
 
-        print(
-            f"\rFaults processed: "
-            f"{fault_index:4d}/"
-            f"{total_faults_to_process:<4d} "
-            f"({percent:6.2f}%) "
-            f"Elapsed: {elapsed:8.2f}s",
-            end="",
-            flush=True
-        )
-
-    print()
-    print()
-
-    dictionary_time = (
-        time.perf_counter()
-        - dictionary_start
-    )
-
-    # --------------------------------------------------------
-    # Analyze dictionary
-    # --------------------------------------------------------
-
-    detected_faults = [
-        fault_name
-        for fault_name, tests
-        in fault_dictionary.items()
-        if tests
-    ]
-
-    undetected_faults = [
-        fault_name
-        for fault_name, tests
-        in fault_dictionary.items()
-        if not tests
-    ]
-
-    total_faults = len(faults)
-
-    detected_count = len(
-        detected_faults
-    )
-
-    baseline_coverage = (
-        100.0 * detected_count / total_faults
-        if total_faults
-        else 0.0
-    )
-
-    print(
-        f"Total faults       : "
-        f"{total_faults}"
-    )
-
-    print(
-        f"Detected faults    : "
-        f"{detected_count}"
-    )
-
-    print(
-        f"Undetected faults  : "
-        f"{len(undetected_faults)}"
-    )
-
-    print(
-        f"Fault coverage     : "
-        f"{baseline_coverage:.2f}%"
-    )
-
-    print(
-        f"Dictionary time    : "
-        f"{dictionary_time:.6f} s"
-    )
-
+    return fault_dictionary
 
 
 # ============================================================
@@ -329,68 +204,22 @@ def run_experiment(benchmark_name):
         f"Gates           : {len(circuit.gates)}"
     )
 
-    # ============================================================
-    # GENERATE TEST VECTORS
-    # ============================================================
+    # --------------------------------------------------------
+    # GENERATE ALL INPUT VECTORS
+    # --------------------------------------------------------
 
-    MAX_EXHAUSTIVE_INPUTS = 16
-    SAMPLED_VECTOR_COUNT = 1000
+    print("\n" + "-" * 70)
+    print("1. EXHAUSTIVE TEST VECTOR GENERATION")
+    print("-" * 70)
 
-    print("\n" + "=" * 70)
+    test_vectors = generate_all_input_vectors(
+        circuit
+    )
 
-    if len(circuit.inputs) <= MAX_EXHAUSTIVE_INPUTS:
-
-        print("1. EXHAUSTIVE TEST VECTOR GENERATION")
-        print("=" * 70)
-
-        test_vectors = generate_all_input_vectors(
-            circuit
-        )
-
-        print(
-              f"Possible input vectors : "
-            f"{len(test_vectors)}"
-        )
-
-    else:
-
-        print("1. BOUNDED RANDOM TEST VECTOR GENERATION")
-        print("=" * 70)
-
-        import random
-
-        test_vectors = []
-
-        for _ in range(SAMPLED_VECTOR_COUNT):
-
-            input_values = {
-                node: random.randint(0, 1)
-                for node in circuit.inputs
-            }
-
-            vector = "".join(
-                str(input_values[node])
-                for node in circuit.inputs
-            )
-
-            test_vectors.append(
-                (vector, input_values)
-            )
-
-        print(
-            f"Primary inputs       : "
-            f"{len(circuit.inputs)}"
-        )
-
-        print(
-            f"Exhaustive vectors   : "
-            f"2^{len(circuit.inputs)}"
-        )
-
-        print(
-            f"Sampled test vectors : "
-            f"{len(test_vectors)}"
-        )
+    print(
+        f"Possible input vectors : "
+        f"{len(test_vectors)}"
+    )
 
     # --------------------------------------------------------
     # GENERATE STUCK-AT FAULTS

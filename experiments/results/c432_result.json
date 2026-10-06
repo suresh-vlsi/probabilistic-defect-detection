@@ -1,0 +1,38 @@
+{
+    "benchmark": "c432.bench",
+    "circuit": {
+        "primary_inputs": 36,
+        "primary_outputs": 7,
+        "nodes": 196,
+        "gates": 160
+    },
+    "faults": {
+        "total": 392,
+        "detected": 389,
+        "undetected": 3,
+        "baseline_coverage_percent": 99.23469387755102
+    },
+    "atpg": {
+        "successful_faults": 389,
+        "success_rate_percent": 99.23469387755102,
+        "runtime_seconds": 1.5633556979996683
+    },
+    "probabilistic": {
+        "ranked_tests": 1000,
+        "compacted_tests": 19,
+        "coverage_percent": 99.23469387755102,
+        "covered_faults": 389,
+        "test_reduction_percent": 98.1,
+        "ranking_runtime_seconds": 0.07727191899994068,
+        "compaction_runtime_seconds": 0.06315782599995146
+    },
+    "runtime": {
+        "fault_dictionary_seconds": 37.314422225999806,
+        "total_seconds": 39.181000854000104
+    },
+    "undetected_faults": [
+        "259/SA1",
+        "347/SA1",
+        "379/SA1"
+    ]
+}
